@@ -51,7 +51,6 @@ jobs:
         uses: docker://github/super-linter:latest
         env:
           DEFAULT_BRANCH: main
-          VALIDATE_ALL_CODEBASE: false
           VALIDATE_ANSIBLE: true
           VALIDATE_PYTHON_PYLINT: true
           VALIDATE_POWERSHELL: true
