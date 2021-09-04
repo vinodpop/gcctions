@@ -50,7 +50,7 @@ jobs:
       - name: Lint Code Base
         uses: docker://github/super-linter:latest
         env:
-          VALIDATE_ALL_CODEBASE: false
+          DEFAULT_BRANCH: main
           VALIDATE_ANSIBLE: true
           VALIDATE_PYTHON_PYLINT: true
           VALIDATE_POWERSHELL: true
