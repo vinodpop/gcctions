@@ -1,0 +1,6 @@
+---
+hosts: localhost
+become: false
+tasks:
+- debug:
+  msg: "This is for testing"
