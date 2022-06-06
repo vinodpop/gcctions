@@ -3,7 +3,7 @@ name: Python Package using Conda
 on: [push]
 permissions:
   id-token: write
-  content: write
+  contents: write
 
 jobs:
   build-linux:
