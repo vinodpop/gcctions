@@ -1,0 +1,85 @@
+name: Deploy to Private cloud
+on:
+ pull_request:
+    branches: 
+      - private-cloud-dev
+      - private-cloud-prod
+    types:
+      #- created
+      - closed
+    paths-ignore:
+      - '**.md'
+      - 'log/**'
+      - '.github/**'
+env:
+   PROJECT_ID: "ikea-itsd-ml"
+   DEPLOYMENT_NAME: "incident"
+   IMAGE_NAME: "nowit-incident-cicd"
+jobs:
+  build:
+    name: Build/Push docker image
+    runs-on: k8-cd
+    steps:
+    - name: Chekcout the latest version 
+      uses: actions/checkout@v2
+    - name: Login Docker
+      uses: 'lagren/docker-gcr-action@master'
+      with:
+        SERVICE_ACCOUNT_KEY: ${{ secrets.GCP_SA_CR_KEY }}
+        HOST: 'gcr.io'
+    - name: Build the docker image to dev
+      if: (github.event_name == 'pull_request' && github.base_ref == 'private-cloud-dev')
+      run: |-
+        docker build -f M_Dockerfile -t gcr.io/$PROJECT_ID/private-cloud-dev/$IMAGE_NAME:$GITHUB_SHA .
+    - name: Push to the registry to dev
+      if: (github.event_name == 'pull_request' && github.base_ref == 'private-cloud-dev')
+      run: |-
+        docker push gcr.io/$PROJECT_ID/private-cloud-dev/$IMAGE_NAME:$GITHUB_SHA
+    - name: Build the docker image to prod
+      if: (github.event_name == 'pull_request' && github.base_ref == 'private-cloud-prod')
+      run: |-
+        docker build -f M_Dockerfile -t gcr.io/$PROJECT_ID/private-cloud-prod/$IMAGE_NAME:$GITHUB_SHA .
+    - name: Push to the registry to prod
+      if: (github.event_name == 'pull_request' && github.base_ref == 'private-cloud-prod')
+      run: |-
+        docker push gcr.io/$PROJECT_ID/private-cloud-prod/$IMAGE_NAME:$GITHUB_SHA
+  deploy:
+     name: deploying to PC-dev
+     needs: build
+     #if: (github.event.pull_request.merged == true)
+     runs-on: private-cloud
+     steps:
+     - name: Chekcout the latest version 
+       uses: actions/checkout@v2
+     - uses: yokawasa/action-setup-kube-tools@v0.7.1
+       with:
+        kubectl: '1.17.1'
+        kustomize: '3.7.0'
+     - name: Create kubeconfig for dev
+       if: (github.event_name == 'pull_request' && github.base_ref == 'private-cloud-dev')
+       run: |-
+         mkdir ${HOME}/.kube
+         echo "${{ secrets.KUBECONFIG_PC_DEV_DEPLOY }}" | base64 --decode > ${HOME}/.kube/config
+     - name: Create kubeconfig for prod
+       if: (github.event_name == 'pull_request' && github.base_ref == 'private-cloud-prod')
+       run: |-
+         mkdir ${HOME}/.kube
+         echo "${{ secrets.KUBECONFIG_PC_PROD_DEPLOY }}" | base64 --decode > ${HOME}/.kube/config
+     - name: Update the image name in kustomize and deploy to dev
+       if: (github.event_name == 'pull_request' && github.base_ref == 'private-cloud-dev')
+       run: |-
+         pushd base/
+         kustomize edit set image gcr.io/PROJECT_ID/IMAGE_ENV/TASK_NAME:TAG=gcr.io/$PROJECT_ID/private-cloud-dev/$IMAGE_NAME:$GITHUB_SHA
+         popd
+         kustomize build overlays/private-cloud-dev/ | kubectl apply -f -
+         kubectl rollout status deployment/dev-snow-$DEPLOYMENT_NAME -n ikeaautomationframework
+         kubectl get pods -o wide -n ikeaautomationframework | grep -i dev-snow-$DEPLOYMENT_NAME*
+     - name: Update the image name in kustomize and deploy to prod
+       if: (github.event_name == 'pull_request' && github.base_ref == 'private-cloud-prod')
+       run: |-
+         pushd base/
+         kustomize edit set image gcr.io/PROJECT_ID/IMAGE_ENV/TASK_NAME:TAG=gcr.io/$PROJECT_ID/private-cloud-prod/$IMAGE_NAME:$GITHUB_SHA
+         popd
+         kustomize build overlays/private-cloud-prod/ | kubectl apply -f -
+         kubectl rollout status deployment/prd-snow-$DEPLOYMENT_NAME -n ikeaautomationframeworkprod
+         kubectl get pods -o wide -n ikeaautomationframeworkprod | grep -i prd-snow-$DEPLOYMENT_NAME*
